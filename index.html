@@ -347,7 +347,7 @@ const DEFAULT_DESIGN = {
   pt: { align: 'center', nameSize: 30, nameWeight: 700, nameColor: '', nameFx: 'none', bioSize: 15, bioColor: '', bioWidth: 44, gap: 10, handleShow: true },
   social: { style: 'glass', size: 44, pos: 'top' },
   fonts: { heading: 'Sora', body: 'Figtree', button: '', gf: '', file: '', fileName: '' },
-  bg: { type: 'mesh', angle: 155, speed: 45, image: '', video: '', posX: 50, posY: 50, size: 'cover', blur: 0, brightness: 100, contrast: 100, saturate: 100, opacity: 100, overlayOp: 0, orbs: true, orbCount: 3, orbSize: 55, orbInt: 45, pType: 'none', pCount: 60, pSize: 2, pSpeed: 40, pColor: '', pOp: 60, grain: false, grainAmt: 10, vignette: 25 },
+  bg: { type: 'mesh', angle: 155, speed: 45, image: '', video: '', posX: 50, posY: 50, size: 'cover', blur: 0, brightness: 100, contrast: 100, saturate: 100, opacity: 100, overlayOp: 0, orbs: true, orbCount: 3, orbSize: 55, orbInt: 45, pType: 'none', pCount: 60, pSize: 2, pSpeed: 40, pColor: '', pOp: 60, grain: false, grainAmt: 10, vignette: 0 },
   pal: { dark: PAL_DARK, light: PAL_LIGHT },
   button: { style: 'liquid', radius: 20, height: 62, width: 100, padX: 18, borderW: 1, blur: 22, shadow: 40, glow: 0, size: 16, weight: 600, align: 'center', iconPos: 'left', iconSize: 22, iconBox: true, arrow: true, upper: false, hover: 'lift', click: 'ripple', idle: 'none' },
   anim: { enter: 'fade-up', profileEnter: 'fade-up', duration: 750, stagger: 70, delay: 80, themeFx: true, cursorGlow: true, pointerLight: true },
@@ -463,7 +463,7 @@ button{font:inherit;color:inherit}
 #bg>*{position:absolute;inset:0}
 .bg-media{background-size:cover;background-repeat:no-repeat}
 .bg-media video{width:100%;height:100%;object-fit:cover}
-.bg-orbs i,.bg-mesh i{position:absolute;border-radius:50%;filter:blur(70px);will-change:transform}
+.bg-orbs i,.bg-mesh i{position:absolute;border-radius:50%;-webkit-mask-image:radial-gradient(closest-side,#000 0,rgba(0,0,0,.75) 55%,transparent 100%);mask-image:radial-gradient(closest-side,#000 0,rgba(0,0,0,.75) 55%,transparent 100%);will-change:transform;contain:strict}
 .bg-ov{background:var(--overlay)}
 .bg-grain{mix-blend-mode:overlay;background-size:180px}
 #pc{width:100%;height:100%}
@@ -681,6 +681,7 @@ button.grp-h .ic{width:18px;height:18px;order:0;transition:transform .45s var(--
 @media (max-width:860px){.shell.split,.shell.split-r{flex-direction:column;gap:28px}.split .profile,.split-r .profile{position:static;flex:none;align-items:center;text-align:center}}
 @media (max-width:640px){.page{padding-left:16px;padding-right:16px}.bento{--cols:2!important}.grid.g3{--cols:2!important}.sp-2x2{grid-row:span 1}}
 @media (hover:none){.h-tilt{transform:none}}
+html.thumb *,html.thumb *::before,html.thumb *::after{animation:none!important;transition:none!important}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;animation-delay:0s!important;transition-duration:.01ms!important}.bg-mesh i,.bg-orbs i{animation:none!important}}
 `;
 const GRAIN = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")";
@@ -718,7 +719,7 @@ function siteCss(S, ctx) {
   const gradient = 'linear-gradient(' + bg.angle + 'deg,var(--bg1),var(--bg2),var(--bg3))';
   if (bg.type === 'gradient') css += '.bg-base{background:' + gradient + '}\n';
   else if (bg.type === 'animated') css += '.bg-base{background:' + gradient + ';background-size:300% 300%;animation:gshift ' + gdur.toFixed(1) + 's ease infinite}\n';
-  else if (bg.type === 'mesh') css += '.bg-base{background:linear-gradient(' + bg.angle + 'deg,var(--bg1),color-mix(in srgb,var(--bg1) 70%,var(--bg2)))}\n.bg-mesh i:nth-child(1){left:-10vmax;top:-10vmax;width:70vmax;height:70vmax;background:var(--bg2);opacity:.9;animation:d1 ' + ddur.toFixed(0) + 's ease-in-out infinite}\n.bg-mesh i:nth-child(2){right:-14vmax;top:10vh;width:64vmax;height:64vmax;background:var(--bg3);opacity:.9;animation:d2 ' + (ddur * 1.2).toFixed(0) + 's ease-in-out infinite}\n.bg-mesh i:nth-child(3){left:10vw;bottom:-20vmax;width:60vmax;height:60vmax;background:color-mix(in srgb,var(--accent) 55%,var(--bg2));opacity:.55;animation:d3 ' + (ddur * 1.4).toFixed(0) + 's ease-in-out infinite}\n.bg-mesh i:nth-child(4){right:0;bottom:-10vmax;width:46vmax;height:46vmax;background:color-mix(in srgb,var(--accent2) 50%,var(--bg3));opacity:.45;animation:d4 ' + (ddur * 1.1).toFixed(0) + 's ease-in-out infinite}\n';
+  else if (bg.type === 'mesh') css += '.bg-base{background:linear-gradient(' + bg.angle + 'deg,var(--bg1),color-mix(in srgb,var(--bg1) 45%,var(--bg2)))}\n.bg-mesh i:nth-child(1){left:-10vmax;top:-10vmax;width:70vmax;height:70vmax;background:var(--bg2);opacity:.9;animation:d1 ' + ddur.toFixed(0) + 's ease-in-out infinite}\n.bg-mesh i:nth-child(2){right:-14vmax;top:10vh;width:64vmax;height:64vmax;background:var(--bg3);opacity:.9;animation:d2 ' + (ddur * 1.2).toFixed(0) + 's ease-in-out infinite}\n.bg-mesh i:nth-child(3){left:10vw;bottom:-20vmax;width:60vmax;height:60vmax;background:color-mix(in srgb,var(--accent) 55%,var(--bg2));opacity:.55;animation:d3 ' + (ddur * 1.4).toFixed(0) + 's ease-in-out infinite}\n.bg-mesh i:nth-child(4){right:0;bottom:-10vmax;width:46vmax;height:46vmax;background:color-mix(in srgb,var(--accent2) 50%,var(--bg3));opacity:.45;animation:d4 ' + (ddur * 1.1).toFixed(0) + 's ease-in-out infinite}\n';
   else css += '.bg-base{background:var(--bg1)}\n';
   if (bg.type === 'image' || bg.type === 'video') {
     const f = 'blur(' + bg.blur + 'px) brightness(' + bg.brightness + '%) contrast(' + bg.contrast + '%) saturate(' + bg.saturate + '%)';
@@ -733,7 +734,7 @@ function siteCss(S, ctx) {
   }
   css += '.bg-ov{opacity:' + (bg.overlayOp / 100) + '}\n';
   css += '.bg-grain{background-image:' + GRAIN + ';opacity:' + (bg.grainAmt / 100) + '}\n';
-  css += '.bg-vig{background:radial-gradient(ellipse at center,transparent 45%,rgba(0,0,0,' + (bg.vignette / 100).toFixed(2) + '))}\n';
+  css += '.bg-vig{background:radial-gradient(ellipse at center,transparent 62%,rgba(0,0,0,' + (bg.vignette / 100 * .55).toFixed(2) + '))}\n';
   css += '#cglow{background:radial-gradient(520px circle at var(--px,50%) var(--py,30%),color-mix(in srgb,var(--glow) 20%,transparent),transparent 62%)}\n';
   /* custom font face */
   if (d.fonts.file && ctx && ctx.res) { const u = ctx.res(d.fonts.file, 'font'); if (u) css += '@font-face{font-family:"LB Custom";src:url("' + u + '");font-display:swap}\n'; }
@@ -1054,7 +1055,7 @@ LB.documentHtml = function (S, ctx, kind, opts) {
   if (exp) {
     return '<!DOCTYPE html>\n<html lang="' + esc(m.lang) + '" data-theme="' + (d.siteMode === 'light' ? 'light' : 'dark') + '"><head>' + head + '<link rel="stylesheet" href="assets/css/style.css"></head><body><div id="root">' + b.html + '</div>' + cfgJson + '<script src="assets/js/main.js" defer><\/script></body></html>\n';
   }
-  return '<!DOCTYPE html>\n<html lang="' + esc(m.lang) + '" data-theme="dark"><head>' + head + '<style id="site-css">' + b.css.replace(/<\/style/gi, '<\\/style') + '</style></head><body><div id="root">' + b.html + '</div>' + cfgJson + '<script>' + runtimeSource(!ctx.thumb).replace(/<\/script/gi, '<\\/script') + '<\/script></body></html>';
+  return '<!DOCTYPE html>\n<html lang="' + esc(m.lang) + '" data-theme="dark"' + (ctx.thumb ? ' class="thumb"' : '') + '><head>' + head + '<style id="site-css">' + b.css.replace(/<\/style/gi, '<\\/style') + '</style></head><body><div id="root">' + b.html + '</div>' + cfgJson + '<script>' + runtimeSource(!ctx.thumb).replace(/<\/script/gi, '<\\/script') + '<\/script></body></html>';
 };
 
 /* ---------- ZIP (store + deflate-raw) ---------- */
@@ -1683,7 +1684,7 @@ function postUpdate(extra) {
   pv.contentWindow.postMessage(Object.assign({ __lb: 1, t: 'update', css: b.css, html: b.html, cfg: b.cfg, fonts: b.fonts, mode: ui.pmode, noIntro: ui.introDone }, extra || {}), '*');
   ui.introDone = true;
 }
-function schedulePreview() { clearTimeout(pvT); pvT = setTimeout(() => postUpdate(), 40); }
+function schedulePreview() { if (pvT) return; pvT = setTimeout(() => { pvT = 0; postUpdate(); }, 60); }
 function toPreview(msg) { const pv = $('#pv'); if (pv && pv.contentWindow && frameReady) pv.contentWindow.postMessage(Object.assign({ __lb: 1 }, msg), '*'); }
 function fitFrame() {
   const body = $('#stageBody'), fr = $('#frame'); if (!body || !fr || !body.clientWidth) return;
