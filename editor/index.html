@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow">
+<html lang="de"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="connect-src 'self' https://api.github.com; base-uri 'none'; object-src 'none'; form-action 'none'"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow">
 <title>Link Studio</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap">
 <style>:root{
@@ -213,16 +213,42 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&a
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const clone = o => JSON.parse(JSON.stringify(o));
 const getPath = (o, p) => p.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
-const setPath = (o, p, v) => { const ks = p.split('.'); let a = o; for (let i = 0; i < ks.length - 1; i++) { if (a[ks[i]] == null) a[ks[i]] = {}; a = a[ks[i]]; } a[ks[ks.length - 1]] = v; };
+const badKey = k => k === '__proto__' || k === 'constructor' || k === 'prototype';
+const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+const setPath = (o, p, v) => { const ks = p.split('.'); if (ks.some(badKey)) return; let a = o; for (let i = 0; i < ks.length - 1; i++) { if (a[ks[i]] == null) a[ks[i]] = {}; a = a[ks[i]]; } a[ks[ks.length - 1]] = v; };
 const merge = (base, patch) => {
   if (Array.isArray(patch)) return clone(patch);
   if (patch && typeof patch === 'object') {
     const out = (base && typeof base === 'object' && !Array.isArray(base)) ? { ...base } : {};
-    for (const k in patch) out[k] = merge(out[k], patch[k]);
+    for (const k of Object.keys(patch)) { if (badKey(k)) continue; out[k] = merge(out[k], patch[k]); }
     return out;
   }
   return patch;
 };
+
+/* ---------- Sicherheit: Prüf- und Säuberungshilfen ---------- */
+const COLOR_RE = /^(#[0-9a-f]{3,8}|[a-z]{3,24}|(?:rgb|rgba|hsl|hsla)\(\s*[0-9.]+%?\s*[, ]\s*[0-9.]+%?\s*[, ]\s*[0-9.]+%?\s*(?:[,/]\s*[0-9.]+%?\s*)?\)|var\(--[\w-]{1,30}\))$/i;
+const isCssColor = v => typeof v === 'string' && v.length <= 60 && COLOR_RE.test(v.trim());
+const cssColor = (v, fb) => isCssColor(v) ? v.trim() : (fb == null ? '' : fb);
+const tk = s => String(s == null ? '' : s).replace(/[^\w-]/g, '');
+const num = (v, d) => ((typeof v === 'number' || (typeof v === 'string' && v.trim() !== '')) && Number.isFinite(+v)) ? +v : d;
+const safeId = (v, p) => (typeof v === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(v)) ? v : uid(p);
+const httpUrl = v => { v = String(v == null ? '' : v).trim(); return /^https?:\/\/[^\s"'<>\\]+$/i.test(v) ? v : ''; };
+/* Link-Ziele: nur harmlose Schemata. Steuerzeichen werden zuerst entfernt, damit "java\tscript:" nicht durchrutscht. */
+const LINK_SCHEMES = /^(https?|mailto|tel|sms|tg|whatsapp|spotify|discord|steam|skype|facetime|geo):/i;
+function safeHref(v) {
+  const u = String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028\u2029\ufeff]/g, '').trim();
+  if (!u) return '#';
+  if (/^[a-z][a-z0-9+.\-]*:/i.test(u)) return LINK_SCHEMES.test(u) ? u : '#';
+  return u;
+}
+/* Bild-/Video-/Schrift-Adressen: nur http(s) oder kleine Bild-Daten; Anführungszeichen, Klammern, Leerzeichen werden kodiert */
+function safeMediaUrl(v) {
+  v = String(v == null ? '' : v).trim();
+  if (/^https?:\/\//i.test(v)) return v.replace(/[\s'"()<>\\\u0000-\u001f]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0'));
+  if (/^data:image\/(png|jpe?g|gif|webp|avif);base64,[A-Za-z0-9+\/=]*$/i.test(v)) return v;
+  return '';
+}
 
 /* ---------- Icons (24x24, stroke based) ---------- */
 const ICONS = {
@@ -298,7 +324,7 @@ const ICONS = {
   wand: '<path d="m15 4-1 1M19 8l1-1M15 8l-1-1M5 21 19 7l-2-2L3 19z"/>', type: '<path d="M4 7V4h16v3M9 20h6M12 4v16"/>', film: '<rect x="2" y="2" width="20" height="20" rx="2.18"/><path d="M7 2v20M17 2v20M2 12h20M2 7h5M2 17h5M17 17h5M17 7h5"/>', code2: '<path d="m18 16 4-4-4-4M6 8l-4 4 4 4M14.5 4l-5 16"/>',
   info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>', alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3z"/><path d="M12 9v4M12 17h.01"/>'
 };
-const ico = (n, cls) => '<svg class="' + (cls || 'ic') + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICONS[n] || ICONS.link) + '</svg>';
+const ico = (n, cls) => '<svg class="' + (cls || 'ic') + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (hasOwn(ICONS, n) ? ICONS[n] : ICONS.link) + '</svg>';
 const PLATFORMS = ['instagram', 'tiktok', 'youtube', 'twitch', 'discord', 'github', 'spotify', 'x', 'reddit', 'steam', 'facebook', 'linkedin', 'telegram', 'whatsapp', 'pinterest', 'soundcloud', 'patreon', 'kick', 'bluesky', 'threads', 'snapchat', 'mail', 'globe'];
 const PLATFORM_LABEL = { instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube', twitch: 'Twitch', discord: 'Discord', github: 'GitHub', spotify: 'Spotify', x: 'X', reddit: 'Reddit', steam: 'Steam', facebook: 'Facebook', linkedin: 'LinkedIn', telegram: 'Telegram', whatsapp: 'WhatsApp', pinterest: 'Pinterest', soundcloud: 'SoundCloud', patreon: 'Patreon', kick: 'Kick', bluesky: 'Bluesky', threads: 'Threads', snapchat: 'Snapchat', mail: 'E-Mail', globe: 'Website' };
 const GENERIC_ICONS = ['link', 'globe', 'mail', 'music', 'video', 'bag', 'heart', 'star', 'camera', 'gamepad', 'book', 'code', 'coffee', 'calendar', 'pin', 'phone', 'briefcase', 'download', 'play', 'image', 'sparkles', 'zap', 'gift', 'user', 'file', 'mic', 'headphones', 'share'];
@@ -329,10 +355,10 @@ const gfUrl = (name, weights) => 'https://fonts.googleapis.com/css2?family=' + e
 /* resolve a font choice -> {css, link?, face?} */
 function resolveFont(v, fonts) {
   v = v || '@system';
-  if (SYSTEM_FONTS[v]) return { css: SYSTEM_FONTS[v][1] };
+  if (hasOwn(SYSTEM_FONTS, v)) return { css: SYSTEM_FONTS[v][1] };
   if (v === '@file') return fonts.file ? { css: '"LB Custom",' + FALLBACK.sans, face: true } : { css: FALLBACK.sans };
-  if (v === '@gf') { const n = (fonts.gf || '').trim(); return n ? { css: '"' + n.replace(/"/g, '') + '",' + FALLBACK.sans, link: gfUrl(n) } : { css: FALLBACK.sans }; }
-  const f = FONT_MAP[v];
+  if (v === '@gf') { const n = String(fonts.gf || '').replace(/[^\w \-]/g, '').trim().slice(0, 60); return n ? { css: '"' + n.replace(/"/g, '') + '",' + FALLBACK.sans, link: gfUrl(n) } : { css: FALLBACK.sans }; }
+  const f = hasOwn(FONT_MAP, v) ? FONT_MAP[v] : null;
   if (f) return { css: '"' + v + '",' + FALLBACK[f[1]], link: gfUrl(v, f[2]) };
   return { css: FALLBACK.sans };
 }
@@ -433,7 +459,8 @@ function collectFonts(d) {
 function hexToRgb(h) { h = String(h || '#000').replace('#', ''); if (h.length === 3) h = h.split('').map(c => c + c).join(''); const n = parseInt(h, 16) || 0; return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
 LB.hexToRgb = hexToRgb;
 function palVars(p) {
-  return '--bg1:' + p.bg1 + ';--bg2:' + p.bg2 + ';--bg3:' + p.bg3 + ';--text:' + p.text + ';--muted:' + p.muted + ';--accent:' + p.accent + ';--accent2:' + p.accent2 + ';--glow:' + p.glow + ';--btn-bg:' + p.btnBg + ';--btn-bg2:' + p.btnBg2 + ';--btn-text:' + p.btnText + ';--btn-border:' + p.btnBorder + ';--btn-op:' + p.btnOp + ';--overlay:' + p.overlay + ';';
+  const c = (k, fb) => cssColor(p[k], fb);
+  return '--bg1:' + c('bg1', '#000000') + ';--bg2:' + c('bg2', '#000000') + ';--bg3:' + c('bg3', '#000000') + ';--text:' + c('text', '#ffffff') + ';--muted:' + c('muted', '#aaaaaa') + ';--accent:' + c('accent', '#888888') + ';--accent2:' + c('accent2', '#888888') + ';--glow:' + c('glow', '#888888') + ';--btn-bg:' + c('btnBg', '#ffffff') + ';--btn-bg2:' + c('btnBg2', '#ffffff') + ';--btn-text:' + c('btnText', '#ffffff') + ';--btn-border:' + c('btnBorder', '#ffffff') + ';--btn-op:' + num(p.btnOp, 12) + ';--overlay:' + c('overlay', '#000000') + ';';
 }
 const ENTER = { 'fade-up': 'e-up', fade: 'e-fade', 'slide-left': 'e-sl', 'slide-right': 'e-sr', zoom: 'e-zoom', blur: 'e-blur', flip: 'e-flip', none: 'e-none' };
 const SHAPES = {
@@ -690,13 +717,13 @@ const GRAIN = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg
 function siteCss(S, ctx) {
   const d = S.design, L = layoutSpec(d), b = d.button, bg = d.bg, an = d.anim, av = d.av, pt = d.pt, so = d.social;
   const fH = resolveFont(d.fonts.heading, d.fonts), fB = resolveFont(d.fonts.body, d.fonts), fK = resolveFont(d.fonts.button || d.fonts.body, d.fonts);
-  const a = an.enter in ENTER ? an.enter : 'fade-up';
+  const a = hasOwn(ENTER, an.enter) ? an.enter : 'fade-up';
   const align = L.profile === 'left' ? 'flex-start' : (L.profile === 'right' ? 'flex-end' : 'center');
   const ta = L.profile === 'center' ? 'center' : (L.profile === 'right' ? 'right' : 'left');
   const ai = pt.align && pt.align !== 'auto' ? (pt.align === 'left' ? 'flex-start' : pt.align === 'right' ? 'flex-end' : 'center') : align;
-  const taFinal = pt.align && pt.align !== 'auto' ? pt.align : ta;
-  const shapeCss = SHAPES[av.shape] || SHAPES.circle;
-  const bcBg = av.bcMode === 'solid' ? av.bc : av.bcMode === 'glass' ? 'rgba(255,255,255,.35)' : 'linear-gradient(135deg,var(--accent),var(--accent2))';
+  const taFinal = pt.align && pt.align !== 'auto' ? tk(pt.align) : ta;
+  const shapeCss = hasOwn(SHAPES, av.shape) ? SHAPES[av.shape] : SHAPES.circle;
+  const bcBg = av.bcMode === 'solid' ? cssColor(av.bc, '#ffffff') : av.bcMode === 'glass' ? 'rgba(255,255,255,.35)' : 'linear-gradient(135deg,var(--accent),var(--accent2))';
   const speed = clamp(bg.speed, 0, 100);
   const gdur = Math.max(6, 44 - speed * 0.38), ddur = Math.max(8, 52 - speed * 0.44);
   let css = '';
@@ -705,13 +732,13 @@ function siteCss(S, ctx) {
   if (an.themeFx) css += ':root{transition:--bg1 .6s,--bg2 .6s,--bg3 .6s,--accent .6s,--accent2 .6s,--text .6s,--muted .6s,--glow .6s}\n';
   css += ':root{--maxw:' + d.layout.maxWidth + 'px;--gap:' + d.layout.gap + 'px;--cols:' + L.cols + ';--row:' + (d.layout.rowH || 150) + 'px;--sec-gap:28px;'
     + '--font-h:' + fH.css + ';--font-b:' + fB.css + ';--font-btn:' + fK.css + ';--ease:cubic-bezier(.2,.8,.2,1);'
-    + '--b-r:' + b.radius + 'px;--b-h:' + b.height + 'px;--b-w:' + b.width + '%;--b-px:' + b.padX + 'px;--b-bw:' + b.borderW + 'px;--b-blur:' + b.blur + 'px;--b-sh:' + (b.shadow / 100) + ';--b-fs:' + b.size + 'px;--b-fw:' + b.weight + ';--b-ta:' + b.align + ';--b-is:' + b.iconSize + 'px;'
+    + '--b-r:' + b.radius + 'px;--b-h:' + b.height + 'px;--b-w:' + b.width + '%;--b-px:' + b.padX + 'px;--b-bw:' + b.borderW + 'px;--b-blur:' + b.blur + 'px;--b-sh:' + (b.shadow / 100) + ';--b-fs:' + b.size + 'px;--b-fw:' + b.weight + ';--b-ta:' + tk(b.align) + ';--b-is:' + b.iconSize + 'px;'
     + '--b-gsh:' + (b.glow > 0 ? '0 0 ' + b.glow + 'px color-mix(in srgb,var(--glow) 70%,transparent)' : '0 0 0 0 transparent') + ';'
     + '--b-bg:var(--btn-bg);--b-bg2:var(--btn-bg2);--b-text:var(--btn-text);--b-border:var(--btn-border);--b-op:var(--btn-op);'
     + '--pl:' + (an.pointerLight ? '.26' : '0') + ';'
     + '--ev:' + ENTER[a] + ';--dur:' + an.duration + 'ms;--stagger:' + an.stagger + 'ms;--d0:' + an.delay + 'ms;'
     + '--av-size:' + av.size + 'px;--av-bw:' + av.bw + 'px;--av-bc:' + bcBg + ';--av-sh:' + av.shadow + ';--av-gl:' + av.glow + ';'
-    + '--p-ai:' + ai + ';--p-ta:' + taFinal + ';--p-gap:' + pt.gap + 'px;--n-size:' + pt.nameSize + 'px;--n-w:' + pt.nameWeight + ';--n-color:' + (pt.nameColor || 'var(--text)') + ';--b-color:' + (pt.bioColor || 'var(--muted)') + ';--bio-size:' + pt.bioSize + 'px;--bio-w:' + pt.bioWidth + 'ch;--so-size:' + so.size + 'px;}\n';
+    + '--p-ai:' + ai + ';--p-ta:' + taFinal + ';--p-gap:' + pt.gap + 'px;--n-size:' + pt.nameSize + 'px;--n-w:' + pt.nameWeight + ';--n-color:' + (cssColor(pt.nameColor, '') || 'var(--text)') + ';--b-color:' + (cssColor(pt.bioColor, '') || 'var(--muted)') + ';--bio-size:' + pt.bioSize + 'px;--bio-w:' + pt.bioWidth + 'ch;--so-size:' + so.size + 'px;}\n';
   /* keyframe name map for entrance (--ev holds the name) */
   css += STATIC_CSS.replace('${shape}', '');
   css += '.av{' + shapeCss + '}\n';
@@ -746,19 +773,19 @@ function siteCss(S, ctx) {
 function linkHtml(it, idx, S, L, ctx, group) {
   const d = S.design, b = d.button, o = it.o || {};
   const style = o.style || b.style, hover = o.hover || b.hover, click = o.click || b.click, idle = o.idle || b.idle;
-  const url = it.url || '#';
+  const url = safeHref(it.url);
   const plat = it.icon === 'auto' || !it.icon ? detectPlatform(it.url) : it.icon;
   const thumb = it.thumb ? ctx.res(it.thumb, 'image') : '';
   const vars = [];
   vars.push('--i:' + idx);
-  if (o.bg) vars.push('--b-bg:' + o.bg);
-  if (o.text) vars.push('--b-text:' + o.text);
-  if (o.border) vars.push('--b-border:' + o.border);
-  if (o.radius !== '' && o.radius != null && !isNaN(o.radius)) vars.push('--b-r:' + o.radius + 'px');
-  if (it.iconColor) vars.push('--ic-color:' + it.iconColor);
+  if (cssColor(o.bg)) vars.push('--b-bg:' + cssColor(o.bg));
+  if (cssColor(o.text)) vars.push('--b-text:' + cssColor(o.text));
+  if (cssColor(o.border)) vars.push('--b-border:' + cssColor(o.border));
+  if (o.radius !== '' && o.radius != null && Number.isFinite(+o.radius)) vars.push('--b-r:' + (+o.radius) + 'px');
+  if (cssColor(it.iconColor)) vars.push('--ic-color:' + cssColor(it.iconColor));
   const iconPos = o.iconPos || b.iconPos;
-  const cls = ['lk', 'v-' + L.variant, 's-' + style, 'h-' + hover, 'c-' + click];
-  if (idle && idle !== 'none') cls.push('i-' + idle);
+  const cls = ['lk', 'v-' + tk(L.variant), 's-' + tk(style), 'h-' + tk(hover), 'c-' + tk(click)];
+  if (idle && idle !== 'none') cls.push('i-' + tk(idle));
   if (thumb) cls.push('has-th');
   if (b.iconBox) cls.push('ibox');
   if (b.upper) cls.push('lk-up');
@@ -775,7 +802,7 @@ function linkHtml(it, idx, S, L, ctx, group) {
   if (L.variant === 'tile' || L.variant === 'bento') row = ic + tx + bd + (L.variant === 'bento' ? arrow : '');
   else if (iconPos === 'right') row = sp + tx + bd + ic;
   else row = (ic || (b.align === 'center' ? sp : '')) + tx + bd + (b.arrow ? arrow : sp);
-  const spanCls = L.bento ? ' sp-' + (it.span || '1x1') : '';
+  const spanCls = L.bento ? ' sp-' + tk(it.span || '1x1') : '';
   const attrs = 'class="' + cls.join(' ') + '" data-id="' + esc(it.id) + '" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer" aria-label="' + esc(it.title) + '"';
   return '<div class="it rv' + spanCls + '" style="--i:' + idx + '"><a ' + attrs + ' style="' + vars.join(';') + '">' + th + '<span class="lk-row">' + row + '</span></a></div>';
 }
@@ -784,15 +811,15 @@ function profileHtml(S, L, ctx, idx) {
   const p = S.profile, d = S.design, av = d.av, pt = d.pt;
   const img = p.avatar ? ctx.res(p.avatar, 'image') : '';
   const initial = (p.name || '?').trim().charAt(0).toUpperCase() || '?';
-  const anCls = av.anim && av.anim !== 'none' ? ' an-' + av.anim : '';
-  const pe = ENTER[d.anim.profileEnter] || 'e-up';
+  const anCls = av.anim && av.anim !== 'none' ? ' an-' + tk(av.anim) : '';
+  const pe = hasOwn(ENTER, d.anim.profileEnter) ? ENTER[d.anim.profileEnter] : 'e-up';
   const r = (n) => 'rv" style="--i:' + n + ';--ev:' + pe;
   let h = '<header class="profile" data-edit="profile">';
   h += '<div class="' + r(0) + '"><div class="avw' + anCls + '"><div class="av' + (av.anim === 'ring' ? ' an-ring' : '') + '">' + (img ? '<img src="' + esc(img) + '" alt="' + esc(p.name) + '" decoding="async">' : '<span class="ini">' + esc(initial) + '</span>') + '</div></div></div>';
-  h += '<h1 class="name ' + (pt.nameFx !== 'none' ? 'fx-' + pt.nameFx + ' ' : '') + r(1) + '"><span class="nt">' + esc(p.name) + '</span>' + (p.verified ? ico('verified', 'ic vf') : '') + '</h1>';
+  h += '<h1 class="name ' + (pt.nameFx !== 'none' ? 'fx-' + tk(pt.nameFx) + ' ' : '') + r(1) + '"><span class="nt">' + esc(p.name) + '</span>' + (p.verified ? ico('verified', 'ic vf') : '') + '</h1>';
   if (pt.handleShow && p.handle) h += '<div class="handle ' + r(2) + '">' + esc(p.handle) + '</div>';
   if (p.bio) h += '<p class="bio ' + r(3) + '">' + esc(p.bio) + '</p>';
-  if (p.badges && p.badges.length) h += '<div class="badges ' + r(4) + '">' + p.badges.map(b => '<span class="badge"' + (b.color ? ' style="--bc:' + esc(b.color) + '"' : '') + '>' + (b.icon && b.icon !== 'none' ? ico(b.icon) : '') + esc(b.text) + '</span>').join('') + '</div>';
+  if (p.badges && p.badges.length) h += '<div class="badges ' + r(4) + '">' + p.badges.map(b => '<span class="badge"' + (cssColor(b.color) ? ' style="--bc:' + cssColor(b.color) + '"' : '') + '>' + (b.icon && b.icon !== 'none' ? ico(b.icon) : '') + esc(b.text) + '</span>').join('') + '</div>';
   if (d.social.pos === 'top' || L.bento || L.shell !== 'stack') h += socialsHtml(S, 5);
   h += '</header>';
   return h;
@@ -801,7 +828,7 @@ function socialsHtml(S, idx) {
   const list = S.socials.filter(s => s.enabled && s.url);
   if (!list.length) return '';
   const st = S.design.social.style;
-  return '<nav class="socials so-' + st + ' rv" style="--i:' + idx + '" aria-label="Social Media">' + list.map(s => '<a class="soc" data-id="' + esc(s.id) + '" data-edit="social" href="' + esc(s.url) + '" target="_blank" rel="noopener noreferrer" aria-label="' + esc(PLATFORM_LABEL[s.platform] || s.platform) + '">' + ico(s.platform) + '</a>').join('') + '</nav>';
+  return '<nav class="socials so-' + tk(st) + ' rv" style="--i:' + idx + '" aria-label="Social Media">' + list.map(s => '<a class="soc" data-id="' + esc(s.id) + '" data-edit="social" href="' + esc(safeHref(s.url)) + '" target="_blank" rel="noopener noreferrer" aria-label="' + esc(PLATFORM_LABEL[s.platform] || s.platform) + '">' + ico(s.platform) + '</a>').join('') + '</nav>';
 }
 function linksHtml(S, L, ctx, startIdx) {
   let idx = startIdx, out = '', open = null;
@@ -827,14 +854,14 @@ function siteBody(S, ctx) {
   const d = S.design, L = layoutSpec(d), bg = d.bg;
   let h = '<div id="bg" aria-hidden="true"><div class="bg-base"></div>';
   if (bg.type === 'mesh') h += '<div class="bg-mesh"><i></i><i></i><i></i><i></i></div>';
-  if (bg.type === 'image' && bg.image) h += '<div class="bg-media" style="background-image:url(\'' + esc(ctx.res(bg.image, 'image')) + '\');background-position:' + bg.posX + '% ' + bg.posY + '%;background-size:' + (bg.size === 'auto' ? 'auto' : bg.size) + '"></div>';
-  if (bg.type === 'video' && bg.video) h += '<div class="bg-media"><video src="' + esc(ctx.res(bg.video, 'video')) + '" autoplay muted loop playsinline' + (ctx.thumb ? ' preload="none"' : '') + '></video></div>';
+  if (bg.type === 'image' && bg.image) h += '<div class="bg-media" style="background-image:url(\'' + esc(ctx.res(bg.image, 'image')) + '\');background-position:' + num(bg.posX, 50) + '% ' + num(bg.posY, 50) + '%;background-size:' + (bg.size === 'auto' || bg.size === 'contain' ? bg.size : 'cover') + '"></div>';
+  if (bg.type === 'video' && bg.video) h += '<div class="bg-media"><video' + (ctx.preview && String(bg.video).startsWith('m:') ? ' data-vid="' + esc(String(bg.video).slice(2)) + '"' : '') + ' src="' + esc(ctx.res(bg.video, 'video')) + '" autoplay muted loop playsinline' + (ctx.thumb ? ' preload="none"' : '') + '></video></div>';
   if (bg.orbs) h += '<div class="bg-orbs">' + '<i></i>'.repeat(clamp(bg.orbCount, 1, 5)) + '</div>';
   if (bg.pType !== 'none') h += '<canvas id="pc"></canvas>';
   h += '<div class="bg-ov"></div>' + (bg.grain ? '<div class="bg-grain"></div>' : '') + (bg.vignette > 0 ? '<div class="bg-vig"></div>' : '') + '</div>';
   h += '<div id="cglow"></div>';
   h += '<div class="tools">' + (S.meta.share ? '<button class="tool" id="sh" aria-label="Seite teilen">' + ico('share') + '</button>' : '') + (d.toggle ? '<button class="tool" id="tt" aria-label="Hell/Dunkel wechseln"><span class="sun">' + ico('sun') + '</span><span class="moon">' + ico('moon') + '</span></button>' : '') + '</div>';
-  h += '<main class="page lay-' + d.layout.type + '">';
+  h += '<main class="page lay-' + tk(d.layout.type) + '">';
   const profile = profileHtml(S, L, ctx);
   const lk = linksHtml(S, L, ctx, 6);
   const shellCls = 'shell' + (L.shell === 'split' ? ' split' : L.shell === 'split-r' ? ' split-r' : '');
@@ -853,7 +880,7 @@ function siteBody(S, ctx) {
 function secretPath(S) {
   const sc = S.meta && S.meta.secret; if (!sc || !sc.on) return '';
   const p = String(sc.path || '').trim();
-  return p && !/^([a-z][a-z0-9+.\-]*:|\/\/|\\)/i.test(p) ? p : 'editor/';
+  return p && /^[\w\-.\/~%]+$/.test(p) && p.indexOf('//') !== 0 ? p : 'editor/';
 }
 function pageCfg(S, ctx) {
   const d = S.design, bg = d.bg;
@@ -896,7 +923,7 @@ function __lbRuntime(PREVIEW) {
     var ctx = c.getContext('2d'), W = 0, H = 0, dpr = Math.min(window.devicePixelRatio || 1, 2);
     function size() { W = c.clientWidth; H = c.clientHeight; c.width = W * dpr; c.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); }
     size(); window.addEventListener('resize', size);
-    var t = cfg.p.type, n = Math.round(cfg.p.count * (W < 600 ? .6 : 1)), sp = cfg.p.speed / 50, sz = cfg.p.size, op = cfg.p.op / 100;
+    var t = cfg.p.type, n = Math.min(400, Math.round(cfg.p.count * (W < 600 ? .6 : 1))), sp = cfg.p.speed / 50, sz = cfg.p.size, op = cfg.p.op / 100;
     var col = cfg.p.color || getComputedStyle(root).getPropertyValue('--accent').trim() || '#ffffff';
     var ps = [], i;
     for (i = 0; i < n; i++) ps.push({ x: Math.random() * W, y: Math.random() * H, r: (.4 + Math.random()) * sz, vx: (Math.random() - .5) * .5, vy: (Math.random() - .5) * .5, ph: Math.random() * 6.28, s: .5 + Math.random() });
@@ -985,7 +1012,7 @@ function __lbRuntime(PREVIEW) {
       } /*/PV*/
     });
     /*PV*/ if (PREVIEW) { document.addEventListener('click', function (e) { if (e.target.closest('a')) e.preventDefault(); }, true); } /*/PV*/
-    if (cfg.secret && !PREVIEW && !cfg.preview) {
+    if (cfg.secret && !PREVIEW && !cfg.preview && !cfg.thumb && /^[\w\-.\/~%]+$/.test(cfg.secret) && cfg.secret.indexOf('//') !== 0) {
       var sn = 0, sl = 0;
       document.addEventListener('click', function (e) {
         if (!e.target.closest || !e.target.closest('.av')) return;
@@ -997,28 +1024,32 @@ function __lbRuntime(PREVIEW) {
   }
   function start(c) { cfg = c; applyTheme(false); bind(); startP(); }
   /*PV*/
+  var vids = {};
+  function applyVids() { var l = document.querySelectorAll('video[data-vid]'), i, u; for (i = 0; i < l.length; i++) { u = vids[l[i].getAttribute('data-vid')]; if (u && l[i].getAttribute('src') !== u) l[i].src = u; } }
   function ensureFonts(list) {
     (list || []).forEach(function (u) { if (!document.querySelector('link[data-f="' + u + '"]')) { var l = document.createElement('link'); l.rel = 'stylesheet'; l.href = u; l.setAttribute('data-f', u); document.head.appendChild(l); } });
   }
   window.addEventListener('message', function (e) {
-    var m = e.data; if (!m || m.__lb !== 1) return;
+    var m = e.data; if (!m || m.__lb !== 1 || e.source !== parent) return;
     var rt = document.getElementById('root');
     if (m.t === 'update') {
       var st = document.getElementById('site-css'); if (st.textContent !== m.css) st.textContent = m.css;
       ensureFonts(m.fonts);
       var changed = rt.__h !== m.html;
       if (m.noIntro) root.classList.add('nointro');
-      if (changed) { rt.innerHTML = m.html; rt.__h = m.html; }
+      if (changed) { rt.innerHTML = m.html; rt.__h = m.html; applyVids(); }
       var keep = cfg ? cfg.force : null; cfg = m.cfg; cfg.force = m.mode || keep; applyTheme(false);
       var pj = JSON.stringify(cfg.p);
       if (changed || pj !== lastP) { lastP = pj; startP(); }
       if (!bound) bind();
     } else if (m.t === 'replay') {
-      root.classList.remove('nointro'); rt.innerHTML = ''; void rt.offsetWidth; rt.innerHTML = rt.__h || ''; startP();
+      root.classList.remove('nointro'); rt.innerHTML = ''; void rt.offsetWidth; rt.innerHTML = rt.__h || ''; applyVids(); startP();
     } else if (m.t === 'focus') {
       var el = m.id ? document.querySelector('[data-id="' + m.id + '"]') : document.querySelector('.profile');
       if (el) { var tg = el.closest('.it') || el; tg.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.remove('sel-flash'); void el.offsetWidth; el.classList.add('sel-flash'); setTimeout(function () { el.classList.remove('sel-flash'); }, 2600); }
-    } else if (m.t === 'mode') { if (cfg) { cfg.force = m.mode; applyTheme(true); } }
+    } else if (m.t === 'vid') {
+      if (typeof m.id === 'string' && m.blob instanceof Blob) { try { vids[m.id] = URL.createObjectURL(m.blob); applyVids(); } catch (er) { } }
+    } else if (m.t === 'mode') { if (cfg) { cfg.force = m.mode === 'light' ? 'light' : 'dark'; applyTheme(true); } }
   });
   /*/PV*/
   var el = document.getElementById('cfg');
@@ -1032,17 +1063,21 @@ function runtimeSource(preview) {
 LB.runtimeSource = runtimeSource;
 
 function analyticsHead(a) {
-  if (!a || a.provider === 'none' || !a.id) return '';
-  const id = esc(a.id.trim());
-  if (a.provider === 'plausible') return '<script defer data-domain="' + id + '" src="' + esc(a.src || 'https://plausible.io/js/script.js') + '"><\/script>';
+  if (!a || a.provider === 'none' || typeof a.id !== 'string') return '';
+  /* ID/Domain nur aus harmlosen Zeichen, Script-URL nur https ohne Zugangsdaten */
+  const rawId = a.id.trim();
+  if (!/^[\w.:-]{1,100}$/.test(rawId) || (a.provider === 'goatcounter' && !/^[A-Za-z0-9-]{1,63}$/.test(rawId))) return '';
+  const id = esc(rawId);
+  const src = def => { try { const u = new URL(String(a.src || '')); return u.protocol === 'https:' && !u.username && !u.password ? u.href : def; } catch (e) { return def; } };
+  if (a.provider === 'plausible') return '<script defer data-domain="' + id + '" src="' + esc(src('https://plausible.io/js/script.js')) + '"><\/script>';
   if (a.provider === 'goatcounter') return '<script data-goatcounter="https://' + id + '.goatcounter.com/count" async src="//gc.zgo.at/count.js"><\/script>';
-  if (a.provider === 'umami') return '<script defer src="' + esc(a.src || 'https://cloud.umami.is/script.js') + '" data-website-id="' + id + '"><\/script>';
+  if (a.provider === 'umami') return '<script defer src="' + esc(src('https://cloud.umami.is/script.js')) + '" data-website-id="' + id + '"><\/script>';
   if (a.provider === 'cloudflare') return '<script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon=\'{"token": "' + id + '"}\'><\/script>';
   return '';
 }
 function faviconSvg(S) {
   const pal = S.design.pal.dark, ch = esc((S.profile.name || '?').trim().charAt(0).toUpperCase() || '?');
-  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="' + pal.accent + '"/><stop offset="1" stop-color="' + pal.accent2 + '"/></linearGradient></defs><rect width="64" height="64" rx="16" fill="url(#g)"/><text x="32" y="43" font-family="system-ui,sans-serif" font-size="34" font-weight="700" text-anchor="middle" fill="#fff">' + ch + '</text></svg>';
+  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="' + cssColor(pal.accent, '#8b7bff') + '"/><stop offset="1" stop-color="' + cssColor(pal.accent2, '#4cc9f0') + '"/></linearGradient></defs><rect width="64" height="64" rx="16" fill="url(#g)"/><text x="32" y="43" font-family="system-ui,sans-serif" font-size="34" font-weight="700" text-anchor="middle" fill="#fff">' + ch + '</text></svg>';
 }
 const jsonScript = o => JSON.stringify(o).replace(/</g, '\\u003c');
 
@@ -1052,18 +1087,20 @@ LB.documentHtml = function (S, ctx, kind, opts) {
   const b = LB.build(S, ctx), m = S.meta, d = S.design;
   const exp = kind === 'export' || kind === 'single';
   const fonts = b.fonts.map(u => '<link rel="stylesheet" href="' + esc(u) + '" data-f="' + esc(u) + '">').join('');
-  const initTheme = "(function(){var m='" + d.siteMode + "';try{var s=localStorage.getItem('lb-theme');if(" + (d.toggle ? 'true' : 'false') + "&&(s==='dark'||s==='light'))m=s}catch(e){}" + (exp ? '' : '') + "if(m==='auto')m=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';" + (opts.force ? "m='" + opts.force + "';" : '') + "document.documentElement.setAttribute('data-theme',m)})();";
-  let head = '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>' + esc(m.title) + '</title>';
+  const siteMode = ['dark', 'light', 'auto'].includes(d.siteMode) ? d.siteMode : 'dark';
+  const siteUrl = httpUrl(m.siteUrl);
+  const initTheme = "(function(){var m='" + siteMode + "';try{var s=localStorage.getItem('lb-theme');if(" + (d.toggle ? 'true' : 'false') + "&&(s==='dark'||s==='light'))m=s}catch(e){}" + (exp ? '' : '') + "if(m==='auto')m=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';" + (opts.force ? "m='" + (opts.force === 'light' ? 'light' : 'dark') + "';" : '') + "document.documentElement.setAttribute('data-theme',m)})();";
+  let head = '<meta charset="utf-8">' + (exp ? '<meta http-equiv="Content-Security-Policy" content="base-uri \'none\'; object-src \'none\'; form-action \'none\'">' : '') + '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>' + esc(m.title) + '</title>';
   head += '<meta name="description" content="' + esc(m.description) + '"><meta name="theme-color" content="' + esc(d.pal.dark.bg1) + '"><meta name="color-scheme" content="dark light">';
   if (exp) {
     if (m.noindex) head += '<meta name="robots" content="noindex,nofollow">';
     head += '<meta property="og:type" content="website"><meta property="og:title" content="' + esc(m.title) + '"><meta property="og:description" content="' + esc(m.description) + '"><meta name="twitter:card" content="' + (ctx.ogUrl ? 'summary_large_image' : 'summary') + '">';
-    if (m.siteUrl) head += '<link rel="canonical" href="' + esc(m.siteUrl) + '"><meta property="og:url" content="' + esc(m.siteUrl) + '">';
+    if (siteUrl) head += '<link rel="canonical" href="' + esc(siteUrl) + '"><meta property="og:url" content="' + esc(siteUrl) + '">';
     if (ctx.ogUrl) head += '<meta property="og:image" content="' + esc(ctx.ogUrl) + '">';
-    head += '<link rel="icon" href="' + esc(ctx.faviconUrl) + '">';
+    head += '<link rel="icon" href="' + esc(ctx.faviconUrl || '') + '">';
     head += '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>';
   }
-  head += fonts + analyticsHead(m.analytics) + '<script>' + initTheme + '<\/script>';
+  head += fonts + (exp ? analyticsHead(m.analytics) : '') + '<script>' + initTheme + '<\/script>';
   const cfgJson = '<script type="application/json" id="cfg">' + jsonScript(b.cfg) + '<\/script>';
   if (kind === 'single') {
     return '<!DOCTYPE html>\n<html lang="' + esc(m.lang) + '" data-theme="' + (d.siteMode === 'light' ? 'light' : 'dark') + '"><head>' + head + '<style>' + b.css.replace(/<\/style/gi, '<\\/style') + '</style></head><body><div id="root">' + b.html + '</div>' + cfgJson + '<script>' + runtimeSource(false).replace(/<\/script/gi, '<\\/script') + '<\/script></body></html>\n';
@@ -1122,22 +1159,22 @@ LB.exportSite = async function (S, getMedia) {
       const id = v.slice(2);
       if (!used.has(id)) {
         const m = getMedia(id); if (!m) { warnings.push('Medium fehlt: ' + id); return ''; }
-        const nm = m.name || '', e = MIME_EXT[m.mime] || (nm.match(/\.[a-z0-9]+$/i) || ['.bin'])[0].toLowerCase();
+        const nm = String(m.name || ''), e = hasOwn(MIME_EXT, m.mime) ? MIME_EXT[m.mime] : '.bin';
         const dir = kind === 'font' ? 'fonts' : (m.mime || '').startsWith('video') || kind === 'video' ? 'video' : 'img';
-        used.set(id, { path: 'assets/' + dir + '/' + slug(nm) + '-' + id.slice(-4) + e, m });
+        used.set(id, { path: 'assets/' + dir + '/' + slug(nm) + '-' + id.replace(/[^\w-]/g, '').slice(-4) + e, m });
       }
       const p = used.get(id).path;
       return kind === 'font' ? '../' + p.slice(7) : p;
     }
-    if (/^https?:\/\//i.test(v)) return v;
-    return v;
+    return safeMediaUrl(v);
   };
   const ctx = { res, preview: false };
   const m = S.meta;
-  let faviconUrl = m.favicon ? res(m.favicon, 'image') : 'assets/img/favicon.svg';
+  let faviconUrl = m.favicon ? res(m.favicon, 'image') : '';
+  const favOwn = !!faviconUrl; if (!favOwn) faviconUrl = 'assets/img/favicon.svg';
   ctx.faviconUrl = faviconUrl;
   let ogUrl = '';
-  if (m.ogImage) { const p = res(m.ogImage, 'image'); ogUrl = /^https?:/i.test(p) ? p : (m.siteUrl ? m.siteUrl.replace(/\/?$/, '/') + p : ''); if (!ogUrl) warnings.push('OG-Bild: Für Link-Vorschauen wird die Seiten-URL (Einstellungen) benötigt.'); }
+  if (m.ogImage) { const p = res(m.ogImage, 'image'); ogUrl = /^https?:/i.test(p) ? p : (p && httpUrl(m.siteUrl) ? httpUrl(m.siteUrl).replace(/\/?$/, '/') + p : ''); if (!ogUrl) warnings.push('OG-Bild: Für Link-Vorschauen wird die Seiten-URL (Einstellungen) benötigt.'); }
   ctx.ogUrl = ogUrl;
   const html = LB.documentHtml(S, ctx, 'export');
   const b = LB.build(S, ctx);
@@ -1146,7 +1183,7 @@ LB.exportSite = async function (S, getMedia) {
   text('index.html', html);
   text('assets/css/style.css', b.css);
   text('assets/js/main.js', runtimeSource(false));
-  if (!m.favicon) text('assets/img/favicon.svg', faviconSvg(S));
+  if (!favOwn) text('assets/img/favicon.svg', faviconSvg(S));
   text('404.html', '<!DOCTYPE html><html lang="' + esc(m.lang) + '"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Seite nicht gefunden</title><style>body{font-family:system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;background:#0a0c16;color:#f5f6fb}a{color:#8b7bff}</style></head><body><main style="text-align:center"><h1>404</h1><p>Diese Seite gibt es nicht.</p><p><a href="./">Zur Startseite</a></p></main></body></html>');
   text('robots.txt', m.noindex ? 'User-agent: *\nDisallow: /\n' : 'User-agent: *\nAllow: /\n');
   files.push({ name: '.nojekyll', data: new Uint8Array(0) });
@@ -1156,13 +1193,13 @@ LB.exportSite = async function (S, getMedia) {
   return { files, warnings, html };
 };
 LB.exportSingle = async function (S, getMedia, toDataUrl) {
-  const map = {}, scan = o => { if (typeof o === 'string') { if (o.startsWith('m:')) map[o.slice(2)] = 1; } else if (o && typeof o === 'object') Object.values(o).forEach(scan); };
+  const map = Object.create(null), scan = o => { if (typeof o === 'string') { if (o.startsWith('m:')) map[o.slice(2)] = 1; } else if (o && typeof o === 'object') Object.values(o).forEach(scan); };
   scan(S);
   for (const id in map) { const m = getMedia(id); map[id] = m ? await toDataUrl(m.blob) : ''; }
-  const res = v => !v ? '' : String(v).startsWith('m:') ? (map[v.slice(2)] || '') : v;
+  const res = v => !v ? '' : String(v).startsWith('m:') ? (hasOwn(map, v.slice(2)) ? map[v.slice(2)] : '') : safeMediaUrl(v);
   const m = S.meta, ctx = { res, preview: false };
-  ctx.faviconUrl = m.favicon ? res(m.favicon) : 'data:image/svg+xml,' + encodeURIComponent(faviconSvg(S));
-  ctx.ogUrl = m.ogImage && m.siteUrl && /^https?:/i.test(res(m.ogImage)) ? res(m.ogImage) : '';
+  ctx.faviconUrl = (m.favicon && res(m.favicon)) || 'data:image/svg+xml,' + encodeURIComponent(faviconSvg(S));
+  ctx.ogUrl = m.ogImage && httpUrl(m.siteUrl) && /^https?:/i.test(res(m.ogImage)) ? res(m.ogImage) : '';
   return LB.documentHtml(S, ctx, 'single');
 };
 function readme(S, files) {
@@ -1239,8 +1276,41 @@ function setSaveState(dirty) {
   el.title = ui.storage === 'none' ? 'Der Browser erlaubt hier kein Speichern. Sichere dein Projekt über Einstellungen → Projekt sichern.' : 'Lokal im Browser gespeichert';
 }
 function blobToDataUrl(b) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsDataURL(b); }); }
-function dataUrlToBlob(u) { const [h, d] = u.split(','), mime = (h.match(/:(.*?);/) || [])[1] || 'application/octet-stream'; const bin = atob(d), a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return new Blob([a], { type: mime }); }
+function dataUrlToBlob(u, mime) { const bin = atob(u.slice(u.indexOf(',') + 1)), a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return new Blob([a], { type: mime || 'application/octet-stream' }); }
+/* Medien aus Dateien: nur Bild/Video/Schrift. SVG wird von aktiven Inhalten befreit. */
+const MIME_OK = /^(image\/[\w.+-]+|video\/[\w.+-]+|font\/[\w.+-]+|application\/(x-)?font-[\w.+-]+)$/i;
+async function cleanSvgBlob(blob) {
+  try {
+    const txt = await blob.text();
+    if (txt.length > 5e6) return null;
+    const doc = new DOMParser().parseFromString(txt, 'image/svg+xml'), root = doc.documentElement;
+    if (!root || root.localName.toLowerCase() !== 'svg' || doc.getElementsByTagName('parsererror').length) return null;
+    const BAD = /^(script|foreignobject|iframe|object|embed|audio|video|canvas|animate|set|handler|listener|link|meta|base)$/i;
+    const walk = el => {
+      for (const c of [...el.children]) { if (BAD.test(c.localName)) c.remove(); else walk(c); }
+      for (const a of [...el.attributes]) {
+        const n = a.name.toLowerCase(), v = a.value;
+        if (n.startsWith('on') || /(^|[^\w])(javascript|vbscript):/i.test(v) || /@import|expression\(|url\(\s*['"]?\s*(https?:|\/\/)/i.test(v)) el.removeAttribute(a.name);
+        else if ((n === 'href' || n === 'xlink:href' || n === 'src') && !/^(#|data:image\/(png|jpe?g|gif|webp|avif);base64,)/i.test(v.trim())) el.removeAttribute(a.name);
+      }
+    };
+    walk(root);
+    for (const st of [...root.getElementsByTagName('style')]) st.textContent = st.textContent.replace(/@import[^;]*;?/gi, '').replace(/url\(\s*['"]?\s*(https?:|\/\/)[^)]*\)/gi, 'none');
+    return new Blob([new XMLSerializer().serializeToString(root)], { type: 'image/svg+xml' });
+  } catch (e) { return null; }
+}
+/* Eintrag aus einer Projekt-/Theme-Datei prüfen und in {name,mime,blob} umwandeln, sonst null */
+async function mediaFromEntry(x) {
+  if (!x || typeof x !== 'object' || typeof x.data !== 'string' || typeof x.mime !== 'string' || !MIME_OK.test(x.mime)) return null;
+  const i = x.data.indexOf(','); if (i < 0 || !/^data:[^,]{0,120};base64$/i.test(x.data.slice(0, i))) return null;
+  const mime = x.mime.toLowerCase();
+  let blob; try { blob = dataUrlToBlob(x.data, mime); } catch (e) { return null; }
+  if (blob.size > 200e6) return null;
+  if (mime === 'image/svg+xml') { blob = await cleanSvgBlob(blob); if (!blob) return null; }
+  return { name: typeof x.name === 'string' ? x.name.slice(0, 120) : 'datei', mime, blob };
+}
 async function hydrate(m) {
+  const old = media.get(m.id); if (old && typeof old.url === 'string' && old.url.startsWith('blob:')) { try { URL.revokeObjectURL(old.url); } catch (e) { } }
   if (m.mime.startsWith('video')) m.url = URL.createObjectURL(m.blob);
   else m.url = await blobToDataUrl(m.blob);
   media.set(m.id, m);
@@ -1254,21 +1324,83 @@ async function loadProject() {
   try { p = await DB.get('kv', 'project'); if (p) ui.storage = 'idb'; else ui.storage = 'idb'; } catch (e) { try { p = JSON.parse(localStorage.getItem('link-studio') || 'null'); ui.storage = p ? 'ls' : 'none'; if (!p) { localStorage.setItem('lb-t', '1'); localStorage.removeItem('lb-t'); ui.storage = 'ls'; } } catch (e2) { ui.storage = 'none'; } }
   ui.had = !!(p && p.state);
   if (p && p.state) {
-    S = normalize(p.state); themes = p.themes || []; ui.ed = p.ed || 'auto'; ui.pmode = p.pmode || 'dark';
+    S = normalize(p.state); themes = cleanThemes(p.themes); ui.ed = ['auto', 'light', 'dark'].includes(p.ed) ? p.ed : 'auto'; ui.pmode = p.pmode === 'light' ? 'light' : 'dark';
     if (ui.storage === 'idb') {
-      try { const keys = await DB.keys('media'), ref = referencedMedia(); for (const k of keys) { const m = await DB.get('media', k); if (m && ref.has(k)) await hydrate(m); else if (m) DB.del('media', k).catch(() => { }); } } catch (e) { }
+      try { const keys = await DB.keys('media'), ref = referencedMedia(); for (const k of keys) { const m = await DB.get('media', k); if (m && ref.has(k)) { if (typeof k === 'string' && m.blob instanceof Blob && typeof m.mime === 'string' && MIME_OK.test(m.mime)) { m.id = k; await hydrate(m); } } else if (m) DB.del('media', k).catch(() => { }); } } catch (e) { }
     }
   }
 }
-/* fill missing keys from defaults so old projects keep working */
-function normalize(st) {
-  const base = LB.fresh();
-  const out = merge(base, st);
-  out.items = (st.items || base.items).map(it => it.type === 'heading' ? merge({ type: 'heading', collapsible: false, closed: false }, it) : merge({ type: 'link', enabled: true, icon: 'auto', badge: '', thumb: '', span: '1x1', o: {}, subtitle: '' }, it));
-  out.socials = st.socials || base.socials;
-  out.profile.badges = (st.profile && st.profile.badges) || [];
-  out.design.pal = { dark: merge(PAL_DARK, (st.design && st.design.pal && st.design.pal.dark) || {}), light: merge(PAL_LIGHT, (st.design && st.design.pal && st.design.pal.light) || {}) };
+/* Alles, was von außen kommt (Projektdatei, Theme, Browser-Speicher, GitHub), wird hier auf bekannte Felder, Typen und erlaubte Werte
+   zurückgeführt. Fehlende Felder kommen aus den Startwerten, damit alte Projekte weiter funktionieren. */
+const COLOR_PATH = /^design\.(pal\.(dark|light)\.(bg1|bg2|bg3|text|muted|accent|accent2|glow|btnBg|btnBg2|btnText|btnBorder|overlay)|av\.bc|bg\.pColor|pt\.(nameColor|bioColor))$/;
+function enumFor(path) {
+  const E = {
+    'design.siteMode': ['dark', 'light', 'auto'], 'design.layout.type': LB.LAYOUTS.map(x => x[0]), 'design.layout.variant': ['bar', 'tile', 'card', 'text', 'bento'],
+    'design.layout.profilePos': ['top', 'left', 'right'], 'design.layout.profileAlign': ['left', 'center', 'right'], 'design.av.shape': Object.keys(SHAPES), 'design.av.bcMode': ['gradient', 'solid', 'glass'],
+    'design.av.anim': ['none', 'float', 'breathe', 'pulse', 'ring', 'tilt'], 'design.pt.align': ['auto', 'left', 'center', 'right'], 'design.pt.nameFx': ['none', 'gradient', 'shimmer'],
+    'design.social.style': ['glass', 'filled', 'outline', 'plain', 'round'], 'design.social.pos': ['top', 'bottom'], 'design.bg.type': ['solid', 'gradient', 'animated', 'mesh', 'image', 'video'],
+    'design.bg.size': ['cover', 'contain', 'auto'], 'design.bg.pType': ['none', 'dots', 'snow', 'stars', 'bubbles', 'fireflies'], 'design.button.style': LB.BUTTON_STYLES.map(x => x[0]),
+    'design.button.align': ['left', 'center'], 'design.button.iconPos': ['left', 'right', 'none'], 'design.button.hover': HOVERS.map(x => x[0]), 'design.button.click': CLICKS.map(x => x[0]),
+    'design.button.idle': IDLES.map(x => x[0]), 'design.anim.enter': Object.keys(ENTER), 'design.anim.profileEnter': Object.keys(ENTER), 'meta.analytics.provider': ['none', 'plausible', 'goatcounter', 'umami', 'cloudflare']
+  };
+  return hasOwn(E, path) ? E[path] : null;
+}
+function cleanBy(def, src, path) {
+  const out = {}; src = (src && typeof src === 'object' && !Array.isArray(src)) ? src : {};
+  for (const k of Object.keys(def)) {
+    const d = def[k], v = hasOwn(src, k) ? src[k] : undefined, p = path + '.' + k;
+    if (d && typeof d === 'object' && !Array.isArray(d)) out[k] = cleanBy(d, v, p);
+    else if (typeof d === 'number') out[k] = num(v, d);
+    else if (typeof d === 'boolean') out[k] = typeof v === 'boolean' ? v : d;
+    else if (typeof d === 'string') {
+      let t = typeof v === 'string' ? v.slice(0, p === 'design.customCss' ? 200000 : 10000) : d;
+      const en = enumFor(p); if (en && !en.includes(t)) t = d;
+      if (t && COLOR_PATH.test(p) && !isCssColor(t)) t = d;
+      out[k] = t;
+    } else out[k] = clone(d);
+  }
   return out;
+}
+const iconOk = v => typeof v === 'string' && (v === 'auto' || v === 'none' || hasOwn(ICONS, v));
+function cleanItem(it) {
+  it = (it && typeof it === 'object' && !Array.isArray(it)) ? it : {};
+  const str = (v, n) => typeof v === 'string' ? v.slice(0, n || 2000) : '';
+  if (it.type === 'heading') return { type: 'heading', id: safeId(it.id, 'h'), title: str(it.title), collapsible: it.collapsible === true, closed: it.closed === true };
+  const o0 = (it.o && typeof it.o === 'object' && !Array.isArray(it.o)) ? it.o : {}, o = {};
+  [['style', LB.BUTTON_STYLES.map(x => x[0])], ['hover', HOVERS.map(x => x[0])], ['click', CLICKS.map(x => x[0])], ['idle', IDLES.map(x => x[0])], ['iconPos', ['left', 'right', 'none']]].forEach(([k, list]) => { if (typeof o0[k] === 'string' && list.includes(o0[k])) o[k] = o0[k]; });
+  ['bg', 'text', 'border'].forEach(k => { if (isCssColor(o0[k])) o[k] = o0[k].trim(); });
+  if (o0.radius !== '' && o0.radius != null && Number.isFinite(+o0.radius)) o.radius = +o0.radius;
+  const link = { type: 'link', id: safeId(it.id, 'l'), title: str(it.title), subtitle: str(it.subtitle), url: str(it.url, 4000), icon: iconOk(it.icon) ? it.icon : 'auto', enabled: it.enabled !== false, badge: str(it.badge, 60), thumb: str(it.thumb, 4000), span: ['1x1', '2x1', '1x2', '2x2'].includes(it.span) ? it.span : '1x1', o };
+  if (isCssColor(it.iconColor)) link.iconColor = it.iconColor.trim();
+  return link;
+}
+function cleanSocial(x) {
+  x = (x && typeof x === 'object' && !Array.isArray(x)) ? x : {};
+  return { id: safeId(x.id, 's'), platform: PLATFORMS.includes(x.platform) ? x.platform : 'globe', url: typeof x.url === 'string' ? x.url.slice(0, 4000) : '', enabled: x.enabled !== false };
+}
+function cleanBadge(x) {
+  x = (x && typeof x === 'object' && !Array.isArray(x)) ? x : {};
+  return { id: safeId(x.id, 'b'), text: typeof x.text === 'string' ? x.text.slice(0, 60) : '', icon: iconOk(x.icon) ? x.icon : 'none', color: isCssColor(x.color) ? x.color.trim() : '' };
+}
+function uniqIds(list, p) { const seen = new Set(); list.forEach(x => { while (seen.has(x.id)) x.id = uid(p); seen.add(x.id); }); return list; }
+function normalize(st) {
+  if (!st || typeof st !== 'object' || Array.isArray(st)) st = {};
+  const out = { v: 1 };
+  out.meta = cleanBy(DEFAULT_STATE.meta, st.meta, 'meta');
+  out.profile = cleanBy(DEFAULT_STATE.profile, st.profile, 'profile');
+  out.profile.badges = uniqIds((st.profile && Array.isArray(st.profile.badges) ? st.profile.badges : []).slice(0, 50).map(cleanBadge), 'b');
+  out.items = uniqIds((Array.isArray(st.items) ? st.items : LB.fresh().items).slice(0, 2000).map(cleanItem), 'l');
+  out.socials = uniqIds((Array.isArray(st.socials) ? st.socials : LB.fresh().socials).slice(0, 200).map(cleanSocial), 's');
+  out.design = cleanBy(DEFAULT_DESIGN, st.design, 'design');
+  return out;
+}
+function cleanThemes(a) {
+  if (!Array.isArray(a)) return [];
+  const seen = new Set();
+  return a.slice(0, 200).filter(t => t && typeof t === 'object' && t.design && typeof t.design === 'object' && !Array.isArray(t.design)).map(t => {
+    let id = safeId(t.id, 't'); while (seen.has(id)) id = uid('t'); seen.add(id);
+    return { id, name: String(t.name == null ? 'Theme' : t.name).slice(0, 40), design: normalize({ design: t.design }).design };
+  });
 }
 
 /* ---------- history ---------- */
@@ -1304,14 +1436,17 @@ async function addMedia(file, o) {
   let blob = file, mime = file.type;
   const ext = (file.name.split('.').pop() || '').toLowerCase();
   if (o.kind === 'font') mime = FONT_EXT[ext] || mime || 'font/woff2';
+  else if (mime === 'image/svg+xml') { blob = await cleanSvgBlob(file); if (!blob) throw new Error('svg'); }
   else if (mime.startsWith('image/') && !/svg|gif/.test(mime)) { blob = await downscale(file, o.max || 1600, o.square, o.keepAlpha); mime = blob.type; }
+  if (!MIME_OK.test(mime)) throw new Error('mime');
   const m = { id: uid('m'), name: file.name, mime, blob, size: blob.size };
   await hydrate(m);
   DB.put('media', m.id, { id: m.id, name: m.name, mime: m.mime, blob: m.blob, size: m.size }).catch(() => { });
   return m.id;
 }
 function fmtSize(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB'; }
-const resPreview = v => { if (!v) return ''; if (String(v).startsWith('m:')) { const m = media.get(v.slice(2)); return m ? m.url : ''; } return v; };
+/* Videos laufen in der Vorschau über eine eigene Blob-Adresse im Vorschau-Rahmen (siehe sendVideos), weil der geschützte Rahmen keine Adressen des Editors laden darf */
+const resPreview = (v, kind) => { if (!v) return ''; if (String(v).startsWith('m:')) { const m = media.get(v.slice(2)); return m && kind !== 'video' ? m.url : ''; } return safeMediaUrl(v); };
 const mediaOf = v => (v && String(v).startsWith('m:')) ? media.get(v.slice(2)) : null;
 
 /* ---------- ui helpers ---------- */
@@ -1359,9 +1494,9 @@ const dataA = (p, t, extra) => 'id="' + idOf(p) + '" data-path="' + p + '" data-
 function cHead(label, p, unit, showVal) {
   return '<div class="ctl-h"><label for="' + idOf(p) + '">' + label + '</label>' + (showVal ? '<span class="val" data-val="' + p + '" data-unit="' + (unit || '') + '">' + esc(getPath(S, p)) + (unit || '') + '</span>' : '') + (defOf(p) !== undefined ? '<button class="rs" data-reset="' + p + '" title="Zurücksetzen" aria-label="' + label + ' zurücksetzen"' + (isDef(p) ? ' hidden' : '') + '>' + ico('rotate') + '</button>' : '') + '</div>';
 }
-const cRange = (label, p, min, max, step, unit) => '<div class="ctl">' + cHead(label, p, unit, true) + '<input type="range" ' + dataA(p, 'num', ' min="' + min + '" max="' + max + '" step="' + (step || 1) + '" value="' + getPath(S, p) + '"') + '></div>';
+const cRange = (label, p, min, max, step, unit) => '<div class="ctl">' + cHead(label, p, unit, true) + '<input type="range" ' + dataA(p, 'num', ' min="' + min + '" max="' + max + '" step="' + (step || 1) + '" value="' + esc(getPath(S, p)) + '"') + '></div>';
 function hexOf(v) { v = String(v || ''); if (/^#[0-9a-f]{6}$/i.test(v)) return v; if (/^#[0-9a-f]{3}$/i.test(v)) return '#' + v.slice(1).split('').map(c => c + c).join(''); return '#000000'; }
-const cColor = (label, p, auto) => { const v = getPath(S, p) || ''; return '<div class="ctl">' + cHead(label, p) + '<div class="clr"><label class="sw" style="--c:' + (v || 'transparent') + '"><input type="color" tabindex="0" aria-label="' + label + ' Farbwähler" data-path="' + p + '" data-t="color" value="' + hexOf(v) + '"></label><input class="in hex" type="text" ' + dataA(p, 'hex') + ' value="' + esc(v) + '" placeholder="' + (auto ? 'Auto' : '#rrggbb') + '" maxlength="7" spellcheck="false"></div></div>'; };
+const cColor = (label, p, auto) => { const v = getPath(S, p) || ''; return '<div class="ctl">' + cHead(label, p) + '<div class="clr"><label class="sw" style="--c:' + (cssColor(v) || 'transparent') + '"><input type="color" tabindex="0" aria-label="' + label + ' Farbwähler" data-path="' + p + '" data-t="color" value="' + hexOf(v) + '"></label><input class="in hex" type="text" ' + dataA(p, 'hex') + ' value="' + esc(v) + '" placeholder="' + (auto ? 'Auto' : '#rrggbb') + '" maxlength="7" spellcheck="false"></div></div>'; };
 const cSeg = (label, p, opts, o) => { o = o || {}; const cur = getPath(S, p); return '<div class="ctl">' + cHead(label, p) + '<div class="seg' + (o.full ? ' full' : '') + '" role="group" aria-label="' + label + '">' + opts.map(x => '<button type="button" class="' + (String(cur) === String(x[0]) ? 'on' : '') + '" data-path="' + p + '" data-val="' + x[0] + '" data-t="' + (o.num ? 'num' : 'str') + '"' + (o.rr ? ' data-rr="' + o.rr + '"' : '') + ' aria-pressed="' + (String(cur) === String(x[0])) + '">' + (x[2] ? ico(x[2]) : '') + (x[1] || '') + '</button>').join('') + '</div></div>'; };
 const cSel = (label, p, opts, o) => { o = o || {}; const cur = getPath(S, p); const opt = x => '<option value="' + esc(x[0]) + '"' + (String(cur) === String(x[0]) ? ' selected' : '') + '>' + esc(x[1]) + '</option>'; return '<div class="ctl">' + cHead(label, p) + '<select class="in" ' + dataA(p, 'str', o.rr ? ' data-rr="' + o.rr + '"' : '') + '>' + (o.groups ? opts.map(g => '<optgroup label="' + g[0] + '">' + g[1].map(opt).join('') + '</optgroup>').join('') : opts.map(opt).join('')) + '</select></div>'; };
 const cTog = (label, p, rr) => '<div class="ctl inline">' + cHead(label, p) + '<label class="tg"><input type="checkbox" ' + dataA(p, 'bool', rr ? ' data-rr="' + rr + '"' : '') + (getPath(S, p) ? ' checked' : '') + '><span></span></label></div>';
@@ -1371,8 +1506,8 @@ function cMedia(label, p, o) {
   const isUrl = /^https?:/i.test(v);
   let th = ico(kind === 'video' ? 'film' : kind === 'font' ? 'type' : 'image');
   let st = '';
-  if (kind === 'image' && url) { st = ' style="background-image:url(\'' + url + '\')"'; th = ''; }
-  else if (kind === 'video' && m) th = '<video src="' + m.url + '" muted></video>';
+  if (kind === 'image' && url) { st = ' style="background-image:url(\'' + esc(url) + '\')"'; th = ''; }
+  else if (kind === 'video' && m) th = '<video src="' + esc(m.url) + '" muted></video>';
   else if (kind === 'font' && m) th = '<b>Aa</b>';
   const accept = kind === 'video' ? 'video/mp4,video/webm' : kind === 'font' ? '.woff2,.woff,.ttf,.otf' : 'image/*';
   return '<div class="ctl">' + cHead(label, p) + '<div class="media" data-drop="' + p + '" data-kind="' + kind + '" data-max="' + (o.max || 1600) + '" data-sq="' + (o.square ? 1 : 0) + '" data-alpha="' + (o.alpha ? 1 : 0) + '"><div class="th"' + st + '>' + th + '</div><div class="col"><div style="display:flex;gap:6px;flex-wrap:wrap"><label class="btn sm fl">' + ico('upload') + 'Datei wählen<input type="file" class="fi" accept="' + accept + '" aria-label="' + label + ' hochladen"></label><button type="button" class="btn sm ghost" data-clear="' + p + '"' + (v ? '' : ' hidden') + '>Entfernen</button></div>' + (kind === 'font' ? '' : '<input class="in" type="url" data-path="' + p + '" data-t="url" aria-label="' + label + ' URL" value="' + (isUrl ? esc(v) : '') + '" placeholder="oder Bild-/Video-URL">') + '</div></div>' + (m ? '<p class="note">' + esc(m.name) + ' · ' + fmtSize(m.size) + (kind === 'video' && m.size > 20e6 ? ' · groß für GitHub Pages' : '') + '</p>' : '') + (o.note ? '<p class="note">' + o.note + '</p>' : '') + '</div>';
@@ -1454,7 +1589,7 @@ const IDLES = [['none', 'Keine'], ['pulse', 'Pulsieren'], ['float', 'Schweben'],
 
 /* ---------- profile ---------- */
 function panelProfile() {
-  const b = S.profile.badges.map((x, i) => '<li class="row" style="flex-wrap:wrap"><input class="in" style="flex:1;min-width:110px;height:30px" data-path="profile.badges.' + i + '.text" data-t="str" value="' + esc(x.text) + '" aria-label="Badge-Text"><select class="in" style="width:112px;height:30px" data-path="profile.badges.' + i + '.icon" data-t="str" aria-label="Badge-Icon">' + ['none'].concat(GENERIC_ICONS, PLATFORMS).map(k => '<option value="' + k + '"' + (x.icon === k ? ' selected' : '') + '>' + (k === 'none' ? 'Kein Icon' : k) + '</option>').join('') + '</select><label class="sw" style="width:30px;height:30px;border-radius:8px;border:1px solid var(--ed-line);position:relative;overflow:hidden;background:' + (x.color || 'var(--ed-acc)') + '"><input type="color" style="position:absolute;inset:-6px;width:50px;height:50px;opacity:0" data-path="profile.badges.' + i + '.color" data-t="color" value="' + hexOf(x.color || '#2f5bff') + '" aria-label="Badge-Farbe"></label><button type="button" class="btn sm ib ghost" data-act="delbadge" data-id="' + x.id + '" aria-label="Badge löschen">' + ico('trash') + '</button></li>').join('');
+  const b = S.profile.badges.map((x, i) => '<li class="row" style="flex-wrap:wrap"><input class="in" style="flex:1;min-width:110px;height:30px" data-path="profile.badges.' + i + '.text" data-t="str" value="' + esc(x.text) + '" aria-label="Badge-Text"><select class="in" style="width:112px;height:30px" data-path="profile.badges.' + i + '.icon" data-t="str" aria-label="Badge-Icon">' + ['none'].concat(GENERIC_ICONS, PLATFORMS).map(k => '<option value="' + k + '"' + (x.icon === k ? ' selected' : '') + '>' + (k === 'none' ? 'Kein Icon' : k) + '</option>').join('') + '</select><label class="sw" style="width:30px;height:30px;border-radius:8px;border:1px solid var(--ed-line);position:relative;overflow:hidden;background:' + (cssColor(x.color) || 'var(--ed-acc)') + '"><input type="color" style="position:absolute;inset:-6px;width:50px;height:50px;opacity:0" data-path="profile.badges.' + i + '.color" data-t="color" value="' + hexOf(x.color || '#2f5bff') + '" aria-label="Badge-Farbe"></label><button type="button" class="btn sm ib ghost" data-act="delbadge" data-id="' + esc(x.id) + '" aria-label="Badge löschen">' + ico('trash') + '</button></li>').join('');
   return '<div class="pad"><h2 class="h1">Profil</h2><p class="sub">Inhalt deiner Seite. Das Aussehen stellst du rechts ein.</p>' +
     cMedia('Profilbild', 'profile.avatar', { max: 640, square: true, alpha: true, note: 'Wird quadratisch zugeschnitten und auf 640 px verkleinert.' }) +
     cText('Name', 'profile.name') + cText('Benutzername', 'design.pt.handleShow' === '' ? '' : 'profile.handle', { ph: '@name' }) + cText('Beschreibung', 'profile.bio', { area: true, rows: 3 }) + cTog('Verifiziert-Haken', 'profile.verified') +
@@ -1584,7 +1719,7 @@ function viewDashboard() {
 
 /* ---------- themes ---------- */
 function themeCard(t, custom) {
-  return '<div class="thc" data-tid="' + t.id + '"><div class="pv"><iframe data-thumb="' + t.id + '" title="Vorschau ' + esc(t.name) + '" tabindex="-1" loading="lazy"></iframe></div><div><b>' + esc(t.name) + '</b><small>' + esc(t.note || (custom ? 'Eigenes Theme' : '')) + '</small></div><div class="acts"><button type="button" class="btn sm pri" data-act="applytheme" data-id="' + t.id + '">Anwenden</button>' + (custom ? '<button type="button" class="btn sm ib" data-act="duptheme" data-id="' + t.id + '" aria-label="Duplizieren" title="Duplizieren">' + ico('copy') + '</button><button type="button" class="btn sm ib" data-act="renametheme" data-id="' + t.id + '" aria-label="Umbenennen" title="Umbenennen">' + ico('wand') + '</button><button type="button" class="btn sm ib" data-act="exptheme" data-id="' + t.id + '" aria-label="Exportieren" title="Als Datei sichern">' + ico('download') + '</button><button type="button" class="btn sm ib danger" data-act="deltheme" data-id="' + t.id + '" aria-label="Löschen" title="Löschen">' + ico('trash') + '</button>' : '') + '</div></div>';
+  return '<div class="thc" data-tid="' + esc(t.id) + '"><div class="pv"><iframe sandbox="allow-scripts" data-thumb="' + esc(t.id) + '" title="Vorschau ' + esc(t.name) + '" tabindex="-1" loading="lazy"></iframe></div><div><b>' + esc(t.name) + '</b><small>' + esc(t.note || (custom ? 'Eigenes Theme' : '')) + '</small></div><div class="acts"><button type="button" class="btn sm pri" data-act="applytheme" data-id="' + esc(t.id) + '">Anwenden</button>' + (custom ? '<button type="button" class="btn sm ib" data-act="duptheme" data-id="' + esc(t.id) + '" aria-label="Duplizieren" title="Duplizieren">' + ico('copy') + '</button><button type="button" class="btn sm ib" data-act="renametheme" data-id="' + esc(t.id) + '" aria-label="Umbenennen" title="Umbenennen">' + ico('wand') + '</button><button type="button" class="btn sm ib" data-act="exptheme" data-id="' + esc(t.id) + '" aria-label="Exportieren" title="Als Datei sichern">' + ico('download') + '</button><button type="button" class="btn sm ib danger" data-act="deltheme" data-id="' + esc(t.id) + '" aria-label="Löschen" title="Löschen">' + ico('trash') + '</button>' : '') + '</div></div>';
 }
 function viewThemes() {
   return '<div class="wrap"><div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;margin-bottom:14px"><div style="flex:1;min-width:220px"><h1 class="h1">Themes</h1><p class="sub" style="margin:0">Ein Theme ersetzt das komplette Design. Deine Links und Texte bleiben unverändert.</p></div><button type="button" class="btn" data-act="importtheme">' + ico('upload') + 'Theme importieren</button><button type="button" class="btn pri" data-act="savetheme">' + ico('plus') + 'Aktuelles Design speichern</button></div>' +
@@ -1611,11 +1746,14 @@ async function themeToFile(t) {
 }
 async function importThemeData(txt) {
   let o; try { o = JSON.parse(txt); } catch (e) { toast('Keine gültige Theme-Datei.'); return; }
-  if (!o || o.format !== 'link-studio-theme' || !o.design) { toast('Das ist keine Link-Studio-Theme-Datei.'); return; }
-  const map = {};
-  for (const id in (o.media || {})) { const x = o.media[id], blob = dataUrlToBlob(x.data), m = { id: uid('m'), name: x.name, mime: x.mime, blob, size: blob.size }; await hydrate(m); DB.put('media', m.id, { id: m.id, name: m.name, mime: m.mime, blob, size: m.size }).catch(() => { }); map[id] = m.id; }
-  let js = JSON.stringify(o.design); for (const id in map) js = js.split('m:' + id).join('m:' + map[id]);
-  themes.push({ id: uid('t'), name: String(o.name || 'Importiert').slice(0, 40), design: normalize({ design: JSON.parse(js) }).design });
+  if (!o || typeof o !== 'object' || o.format !== 'link-studio-theme' || !o.design || typeof o.design !== 'object' || Array.isArray(o.design)) { toast('Das ist keine Link-Studio-Theme-Datei.'); return; }
+  const map = Object.create(null), mm = (o.media && typeof o.media === 'object' && !Array.isArray(o.media)) ? o.media : {};
+  for (const id of Object.keys(mm)) {
+    if (!/^[A-Za-z0-9_-]{1,40}$/.test(id)) continue;
+    try { const e = await mediaFromEntry(mm[id]); if (!e) continue; const m = { id: uid('m'), name: e.name, mime: e.mime, blob: e.blob, size: e.blob.size }; await hydrate(m); DB.put('media', m.id, { id: m.id, name: m.name, mime: m.mime, blob: m.blob, size: m.size }).catch(() => { }); map[id] = m.id; } catch (e) { }
+  }
+  let design; try { let js = JSON.stringify(o.design); for (const id in map) js = js.split('m:' + id).join('m:' + map[id]); design = normalize({ design: JSON.parse(js) }).design; } catch (e) { toast('Die Theme-Datei ist beschädigt.'); return; }
+  themes.push({ id: uid('t'), name: String(o.name || 'Importiert').slice(0, 40), design });
   scheduleSave(); toast('Theme importiert'); renderAll();
 }
 
@@ -1653,7 +1791,7 @@ function skeleton() {
     '<section class="stage" aria-label="Live-Vorschau"><div class="stage-bar"><div class="seg" id="devSeg"><button type="button" data-dev="mobile" aria-label="Mobil">' + ico('phoneui') + '</button><button type="button" data-dev="tablet" aria-label="Tablet">' + ico('tablet') + '</button><button type="button" data-dev="desktop" aria-label="Desktop">' + ico('monitor') + '</button></div>' +
     '<div class="seg" id="pmSeg"><button type="button" data-pm="dark" aria-label="Dark-Vorschau">' + ico('moon') + '</button><button type="button" data-pm="light" aria-label="Light-Vorschau">' + ico('sun') + '</button></div>' +
     '<button type="button" class="btn sm" data-act="replay">' + ico('play') + 'Intro</button></div>' +
-    '<div class="stage-body" id="stageBody"><div class="frame mobile" id="frame"><iframe id="pv" title="Vorschau der Link-Seite"></iframe></div></div></section>' +
+    '<div class="stage-body" id="stageBody"><div class="frame mobile" id="frame"><iframe id="pv" sandbox="allow-scripts" title="Vorschau der Link-Seite"></iframe></div></div></section>' +
     '<section class="full-view" id="full"></section></div>';
 }
 function renderAll() { renderRail(); renderMain(); syncToolbar(); }
@@ -1689,8 +1827,14 @@ function syncToolbar() {
 /* ---------- preview ---------- */
 let frameReady = false, pvT = 0;
 function previewCtx() { return { res: resPreview, preview: true, force: ui.pmode }; }
+let sentVids = new Set();
+function sendVideos() {
+  const pv = $('#pv'), v = S.design.bg.video; if (!pv || !pv.contentWindow || !frameReady || S.design.bg.type !== 'video' || typeof v !== 'string' || !v.startsWith('m:')) return;
+  const id = v.slice(2), m = media.get(id); if (!m || sentVids.has(id)) return;
+  sentVids.add(id); pv.contentWindow.postMessage({ __lb: 1, t: 'vid', id, blob: m.blob }, '*');
+}
 function mountPreview() {
-  const pv = $('#pv'); frameReady = false;
+  const pv = $('#pv'); frameReady = false; sentVids = new Set();
   pv.onload = () => { frameReady = true; postUpdate(); };
   pv.srcdoc = LB.documentHtml(S, previewCtx(), 'preview', { force: ui.pmode });
 }
@@ -1698,7 +1842,7 @@ function postUpdate(extra) {
   const pv = $('#pv'); if (!pv || !pv.contentWindow || !frameReady) return;
   const b = LB.build(S, previewCtx());
   pv.contentWindow.postMessage(Object.assign({ __lb: 1, t: 'update', css: b.css, html: b.html, cfg: b.cfg, fonts: b.fonts, mode: ui.pmode, noIntro: ui.introDone }, extra || {}), '*');
-  ui.introDone = true;
+  sendVideos(); ui.introDone = true;
 }
 function schedulePreview() { if (pvT) return; pvT = setTimeout(() => { pvT = 0; postUpdate(); }, 60); }
 function toPreview(msg) { const pv = $('#pv'); if (pv && pv.contentWindow && frameReady) pv.contentWindow.postMessage(Object.assign({ __lb: 1 }, msg), '*'); }
@@ -1717,7 +1861,7 @@ function fitFrame() {
 function newLink() { return { id: uid('l'), type: 'link', title: 'Neuer Link', subtitle: '', url: 'https://', icon: 'auto', enabled: true, badge: '', thumb: '', span: '1x1', o: {} }; }
 function refreshRowText(path) {
   const m = path.match(/^items\.(\d+)\.(title|url|icon)$/); if (!m) return;
-  const it = S.items[+m[1]], li = $('.row[data-id="' + it.id + '"]'); if (!li) return;
+  const it = S.items[+m[1]], li = $('.row[data-id="' + CSS.escape(it.id) + '"]'); if (!li) return;
   const b = $('b', li), sm = $('small', li); if (b) b.textContent = it.title || (it.type === 'heading' ? 'Kategorie' : 'Ohne Titel'); if (sm && it.type === 'link') sm.textContent = it.url || 'Keine URL';
   const gi = $('.gi', li); if (gi && it.type === 'link') gi.innerHTML = ico(iconOf(it));
 }
@@ -1756,7 +1900,7 @@ async function handleFile(path, file, d) {
     const id = await addMedia(file, { kind: d.kind, max: +d.max || 1600, square: d.sq === '1', keepAlpha: d.alpha === '1' });
     setv(path, 'm:' + id); renderEditing();
     if (d.kind === 'video' && file.size > 20e6) toast('Hinweis: Das Video ist größer als 20 MB.');
-  } catch (e) { toast('Datei konnte nicht gelesen werden.'); }
+  } catch (e) { toast(e && e.message === 'svg' ? 'Diese SVG-Datei konnte nicht sicher verarbeitet werden.' : 'Datei konnte nicht gelesen werden.'); }
 }
 function pickFile(accept, cb) { const i = document.createElement('input'); i.type = 'file'; i.accept = accept; i.style.cssText = 'position:fixed;left:0;top:0;opacity:0;width:1px;height:1px'; i.onchange = () => { cb(i.files[0]); setTimeout(() => i.remove(), 1000); }; document.body.appendChild(i); i.click(); }
 
@@ -1781,7 +1925,7 @@ async function ghFetch(cfg, method, path, body, accept) {
   const headers = { Authorization: 'Bearer ' + cfg.token, Accept: accept || 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   let r;
-  try { r = await fetch('https://api.github.com' + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), cache: 'no-store' }); }
+  try { r = await fetch('https://api.github.com' + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer' }); }
   catch (e) { throw new GhError('Keine Verbindung zu GitHub. Prüfe dein Netzwerk (oder ob ein Blocker api.github.com sperrt).', 0); }
   return r;
 }
@@ -1817,6 +1961,10 @@ function ghFieldsOk(c) {
   if (!c.token) return 'Trage zuerst unter Optionen → GitHub-Veröffentlichung deinen Token ein.';
   if (!c.user || !c.repo || !c.branch || !c.pagePath || !c.projPath) return 'Bitte fülle in den Optionen alle Felder der GitHub-Veröffentlichung aus.';
   if (!/^[\x21-\x7e]+$/.test(c.token)) return 'Der Token enthält ungültige Zeichen. Kopiere ihn noch einmal ohne Leerzeichen.';
+  if (!/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/.test(c.user)) return 'Der GitHub-Benutzername sieht ungültig aus.';
+  if (!/^[\w.-]{1,100}$/.test(c.repo) || c.repo === '.' || c.repo === '..') return 'Der Repo-Name sieht ungültig aus.';
+  if (!/^[\w.\/-]{1,200}$/.test(c.branch) || /(^|\/)\.{1,2}(\/|$)|\/\/|^\/|\/$/.test(c.branch)) return 'Der Branch-Name sieht ungültig aus.';
+  for (const pth of [c.pagePath, c.projPath]) if (pth.length > 300 || /[\u0000-\u001f\\]/.test(pth) || pth.split('/').some(sg => !sg || sg === '.' || sg === '..')) return 'Ein Dateipfad der GitHub-Veröffentlichung sieht ungültig aus.';
   return '';
 }
 function ghInfo(title, text, goSettings) {
@@ -1964,9 +2112,16 @@ async function projectToFile() {
 }
 async function loadProjectText(txt) {
   let o; try { o = JSON.parse(txt); } catch (e) { toast('Keine gültige Projektdatei.'); return; }
-  if (!o || o.format !== 'link-studio-project' || !o.state) { toast('Das ist keine Link-Studio-Projektdatei.'); return; }
-  for (const id in (o.media || {})) { const x = o.media[id], blob = dataUrlToBlob(x.data), m = { id, name: x.name, mime: x.mime, blob, size: blob.size }; await hydrate(m); DB.put('media', id, { id, name: m.name, mime: m.mime, blob, size: m.size }).catch(() => { }); }
-  S = normalize(o.state); themes = o.themes || []; hpush(null); renderAll(); changed(); toast('Projekt geladen');
+  if (!o || typeof o !== 'object' || o.format !== 'link-studio-project' || !o.state || typeof o.state !== 'object') { toast('Das ist keine Link-Studio-Projektdatei.'); return; }
+  let ns, nt; try { ns = normalize(o.state); nt = cleanThemes(o.themes); } catch (e) { toast('Die Projektdatei ist beschädigt.'); return; }
+  const mm = (o.media && typeof o.media === 'object' && !Array.isArray(o.media)) ? o.media : {};
+  for (const id of Object.keys(mm)) {
+    if (!/^[A-Za-z0-9_-]{1,40}$/.test(id)) continue;
+    try { const e = await mediaFromEntry(mm[id]); if (!e) continue; const m = { id, name: e.name, mime: e.mime, blob: e.blob, size: e.blob.size }; await hydrate(m); DB.put('media', id, { id, name: m.name, mime: m.mime, blob: e.blob, size: m.size }).catch(() => { }); } catch (e) { }
+  }
+  /* Eine fremde Analytics-Script-Adresse aus einer Datei würde auf der veröffentlichten Seite fremden Code laden: nicht übernehmen, wenn sie vom aktuellen Stand abweicht */
+  let dropSrc = false; if (ns.meta.analytics.src && ns.meta.analytics.src !== S.meta.analytics.src) { ns.meta.analytics.src = ''; dropSrc = true; }
+  S = ns; themes = nt; hpush(null); renderAll(); changed(); toast(dropSrc ? 'Projekt geladen. Eine eigene Analytics-Script-Adresse wurde aus Sicherheitsgründen nicht übernommen, bitte unter Analytics neu eintragen.' : 'Projekt geladen', dropSrc ? 6000 : undefined);
 }
 
 /* ---------- actions ---------- */
@@ -2040,7 +2195,7 @@ document.addEventListener('change', e => { const f = e.target.closest && e.targe
 document.addEventListener('pointerdown', e => { const g = e.target.closest && e.target.closest('[data-grip]'); if (g && e.button === 0) startDrag(e, g); });
 document.addEventListener('keydown', e => {
   const g = e.target.closest && e.target.closest('[data-grip]');
-  if (g && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); const li = g.closest('li'), list = li.parentElement.dataset.sort; if (moveItem(list, li.dataset.id, e.key === 'ArrowUp' ? -1 : 1)) { renderPanel(); const n = $('.row[data-id="' + li.dataset.id + '"] [data-grip]'); if (n) n.focus(); } return; }
+  if (g && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); const li = g.closest('li'), list = li.parentElement.dataset.sort; if (moveItem(list, li.dataset.id, e.key === 'ArrowUp' ? -1 : 1)) { renderPanel(); const n = $('.row[data-id="' + CSS.escape(li.dataset.id) + '"] [data-grip]'); if (n) n.focus(); } return; }
   const mod = e.metaKey || e.ctrlKey, tag = (e.target.tagName || '').toLowerCase();
   if (mod && e.key.toLowerCase() === 'z' && tag !== 'textarea' && !(tag === 'input' && ['text', 'url', ''].includes(e.target.type || ''))) { e.preventDefault(); e.shiftKey ? redo() : undo(); }
   else if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); }
@@ -2072,13 +2227,13 @@ document.addEventListener('dragleave', e => { const d = e.target.closest && e.ta
 document.addEventListener('drop', e => { const d = e.target.closest && e.target.closest('.media[data-drop]'); if (d) { e.preventDefault(); d.classList.remove('drop-on'); handleFile(d.dataset.drop, e.dataTransfer.files[0], d.dataset); } });
 window.addEventListener('message', e => {
   const m = e.data; if (!m || m.__lb !== 1 || e.source !== ($('#pv') || {}).contentWindow) return;
-  if (m.t === 'mode') { ui.pmode = m.mode; syncToolbar(); if (ui.section === 'design') renderInsp(); }
+  if (m.t === 'mode') { ui.pmode = m.mode === 'light' ? 'light' : 'dark'; syncToolbar(); if (ui.section === 'design') renderInsp(); }
   else if (m.t === 'edit') {
-    if (m.kind === 'link') { ui.section = 'links'; ui.linkTab = 'links'; ui.sel = m.id; }
+    if (m.kind === 'link') { ui.section = 'links'; ui.linkTab = 'links'; ui.sel = typeof m.id === 'string' ? m.id : null; }
     else if (m.kind === 'social') { ui.section = 'links'; ui.linkTab = 'social'; }
     else ui.section = 'profile';
     ui.view = matchMedia('(max-width:1239px)').matches ? 'edit' : ui.view;
-    renderAll(); const r = $('.row[data-id="' + m.id + '"]'); if (r) r.scrollIntoView({ block: 'nearest' });
+    renderAll(); const r = typeof m.id === 'string' ? $('.row[data-id="' + CSS.escape(m.id) + '"]') : null; if (r) r.scrollIntoView({ block: 'nearest' });
   }
 });
 window.addEventListener('resize', () => fitFrame());
